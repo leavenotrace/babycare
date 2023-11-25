@@ -39,222 +39,6 @@ if "initial_settings" not in st.session_state:
     # 设置完成
     st.session_state["initial_settings"] = True
 
-with st.sidebar:
-    st.markdown("# 🤖 聊天窗口")
-    # 创建容器的目的是配合自定义组件的监听操作
-    chat_container = st.container()
-    with chat_container:
-        current_chat = st.radio(
-            label="历史聊天窗口",
-            format_func=lambda x: x.split("_")[0] if "_" in x else x,
-            options=st.session_state["history_chats"],
-            label_visibility="collapsed",
-            index=st.session_state["current_chat_index"],
-            key="current_chat"
-            + st.session_state["history_chats"][st.session_state["current_chat_index"]],
-            # on_change=current_chat_callback  # 此处不适合用回调，无法识别到窗口增减的变动
-        )
-    st.write("---")
-
-
-# 数据写入文件
-def write_data(new_chat_name=current_chat):
-    if "apikey" in st.secrets:
-        st.session_state["paras"] = {
-            "temperature": st.session_state["temperature" + current_chat],
-            "top_p": st.session_state["top_p" + current_chat],
-            "presence_penalty": st.session_state["presence_penalty" + current_chat],
-            "frequency_penalty": st.session_state["frequency_penalty" + current_chat],
-        }
-        st.session_state["contexts"] = {
-            "context_select": st.session_state["context_select" + current_chat],
-            "context_input": st.session_state["context_input" + current_chat],
-            "context_level": st.session_state["context_level" + current_chat],
-        }
-        save_data(
-            st.session_state["path"],
-            new_chat_name,
-            st.session_state["history" + current_chat],
-            st.session_state["paras"],
-            st.session_state["contexts"],
-        )
-
-
-def reset_chat_name_fun(chat_name):
-    chat_name = chat_name + "_" + str(uuid.uuid4())
-    new_name = filename_correction(chat_name)
-    current_chat_index = st.session_state["history_chats"].index(current_chat)
-    st.session_state["history_chats"][current_chat_index] = new_name
-    st.session_state["current_chat_index"] = current_chat_index
-    # 写入新文件
-    write_data(new_name)
-    # 转移数据
-    st.session_state["history" + new_name] = st.session_state["history" + current_chat]
-    for item in [
-        "context_select",
-        "context_input",
-        "context_level",
-        *initial_content_all["paras"],
-    ]:
-        st.session_state[item + new_name + "value"] = st.session_state[
-            item + current_chat + "value"
-        ]
-    remove_data(st.session_state["path"], current_chat)
-
-
-def create_chat_fun():
-    st.session_state["history_chats"] = [
-        "New Chat_" + str(uuid.uuid4())
-    ] + st.session_state["history_chats"]
-    st.session_state["current_chat_index"] = 0
-
-
-def delete_chat_fun():
-    if len(st.session_state["history_chats"]) == 1:
-        chat_init = "New Chat_" + str(uuid.uuid4())
-        st.session_state["history_chats"].append(chat_init)
-    pre_chat_index = st.session_state["history_chats"].index(current_chat)
-    if pre_chat_index > 0:
-        st.session_state["current_chat_index"] = (
-            st.session_state["history_chats"].index(current_chat) - 1
-        )
-    else:
-        st.session_state["current_chat_index"] = 0
-    st.session_state["history_chats"].remove(current_chat)
-    remove_data(st.session_state["path"], current_chat)
-
-
-with st.sidebar:
-    c1, c2 = st.columns(2)
-    create_chat_button = c1.button(
-        "新建", use_container_width=True, key="create_chat_button"
-    )
-    if create_chat_button:
-        create_chat_fun()
-        st.experimental_rerun()
-
-    delete_chat_button = c2.button(
-        "删除", use_container_width=True, key="delete_chat_button"
-    )
-    if delete_chat_button:
-        delete_chat_fun()
-        st.experimental_rerun()
-
-with st.sidebar:
-    if ("set_chat_name" in st.session_state) and st.session_state[
-        "set_chat_name"
-    ] != "":
-        reset_chat_name_fun(st.session_state["set_chat_name"])
-        st.session_state["set_chat_name"] = ""
-        st.experimental_rerun()
-
-    st.write("\n")
-    st.write("\n")
-    st.text_input("设定窗口名称：", key="set_chat_name", placeholder="点击输入")
-    st.selectbox(
-        "选择模型：", index=0, options=["gpt-3.5-turbo", "gpt-4"], key="select_model"
-    )
-    st.write("\n")
-    st.caption(
-        """
-    - 双击页面可直接定位输入栏
-    - Ctrl + Enter 可快捷提交问题
-    """
-    )
-    st.markdown(
-        '<a href="https://github.com/PierXuY/ChatGPT-Assistant" target="_blank" rel="ChatGPT-Assistant">'
-        '<img src="https://badgen.net/badge/icon/GitHub?icon=github&amp;label=ChatGPT Assistant" alt="GitHub">'
-        "</a>",
-        unsafe_allow_html=True,
-    )
-
-# 加载数据
-if "history" + current_chat not in st.session_state:
-    for key, value in load_data(st.session_state["path"], current_chat).items():
-        if key == "history":
-            st.session_state[key + current_chat] = value
-        else:
-            for k, v in value.items():
-                st.session_state[k + current_chat + "value"] = v
-
-# 保证不同chat的页面层次一致，否则会导致自定义组件重新渲染
-container_show_messages = st.container()
-container_show_messages.write("")
-# 对话展示
-with container_show_messages:
-    if st.session_state["history" + current_chat]:
-        show_messages(current_chat, st.session_state["history" + current_chat])
-
-# 核查是否有对话需要删除
-if any(st.session_state["delete_dict"].values()):
-    for key, value in st.session_state["delete_dict"].items():
-        try:
-            deleteCount = value.get("deleteCount")
-        except AttributeError:
-            deleteCount = None
-        if deleteCount == st.session_state["delete_count"]:
-            delete_keys = key
-            st.session_state["delete_count"] = deleteCount + 1
-            delete_current_chat, idr = delete_keys.split(">")
-            df_history_tem = pd.DataFrame(
-                st.session_state["history" + delete_current_chat]
-            )
-            df_history_tem.drop(
-                index=df_history_tem.query("role=='user'").iloc[[int(idr)], :].index,
-                inplace=True,
-            )
-            df_history_tem.drop(
-                index=df_history_tem.query("role=='assistant'")
-                .iloc[[int(idr)], :]
-                .index,
-                inplace=True,
-            )
-            st.session_state["history" + delete_current_chat] = df_history_tem.to_dict(
-                "records"
-            )
-            write_data()
-            st.experimental_rerun()
-
-
-def callback_fun(arg):
-    # 连续快速点击新建与删除会触发错误回调，增加判断
-    if ("history" + current_chat in st.session_state) and (
-        "frequency_penalty" + current_chat in st.session_state
-    ):
-        write_data()
-        st.session_state[arg + current_chat + "value"] = st.session_state[
-            arg + current_chat
-        ]
-
-
-def clear_button_callback():
-    st.session_state["history" + current_chat] = []
-    write_data()
-
-
-def delete_all_chat_button_callback():
-    if "apikey" in st.secrets:
-        folder_path = st.session_state["path"]
-        file_list = os.listdir(folder_path)
-        for file_name in file_list:
-            file_path = os.path.join(folder_path, file_name)
-            if file_name.endswith(".json") and os.path.isfile(file_path):
-                os.remove(file_path)
-    st.session_state["current_chat_index"] = 0
-    st.session_state["history_chats"] = ["New Chat_" + str(uuid.uuid4())]
-
-
-def save_set(arg):
-    st.session_state[arg + "_value"] = st.session_state[arg]
-    if "apikey" in st.secrets:
-        with open("./set.json", "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "open_text_toolkit_value": st.session_state["open_text_toolkit"],
-                    "open_voice_toolkit_value": st.session_state["open_voice_toolkit"],
-                },
-                f,
-            )
 
 
 # 输入内容展示
@@ -274,20 +58,6 @@ tap_input, tab_func = st.tabs(
 
 with tab_func:
     c1, c2, c3 = st.columns(3)
-    with c1:
-        st.button("清空聊天记录", use_container_width=True, on_click=clear_button_callback)
-    with c2:
-        btn = st.download_button(
-            label="导出聊天记录",
-            data=download_history(st.session_state["history" + current_chat]),
-            file_name=f'{current_chat.split("_")[0]}.md',
-            mime="text/markdown",
-            use_container_width=True,
-        )
-    with c3:
-        st.button(
-            "删除所有窗口", use_container_width=True, on_click=delete_all_chat_button_callback
-        )
 
     st.write("\n")
     st.markdown("自定义功能：")
@@ -301,7 +71,7 @@ with tab_func:
             "开启文本下的功能组件",
             value=default,
             key="open_text_toolkit",
-            on_change=save_set,
+            
             args=("open_text_toolkit",),
         )
     with c2:
@@ -313,7 +83,7 @@ with tab_func:
             "开启语音输入组件",
             value=default,
             key="open_voice_toolkit",
-            on_change=save_set,
+        
             args=("open_voice_toolkit",),
         )
 
