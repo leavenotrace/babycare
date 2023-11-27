@@ -51,7 +51,7 @@ area_gpt_content = st.empty()
 area_error = st.empty()
 
 st.write("\n")
-st.header("AI宝宝无忧卡")
+st.header("AI育儿助手")
 tap_input, tab_func = st.tabs(
     ["💬 聊天",  "🛠️ 功能"]
 )
